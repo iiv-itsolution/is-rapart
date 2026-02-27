@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; }
+    .bar {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: #fff;
+      border-bottom: 1px solid #e5e7eb;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn {
+      padding: 8px 12px;
+      border: 1px solid #d0d7de;
+      border-radius: 10px;
+      background: #fff;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .btn.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    .hint { padding: 10px; color:#555; font-size: 13px; }
+    .err { padding: 10px; color:#b00020; font-size: 13px; white-space: pre-wrap; }
+    .frameWrap { padding: 10px; }
+    .frame { width: 100%; border: 1px solid #d0d7de; border-radius: 10px; height: 620px; background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <button id="btnHistory" class="btn active" type="button">История</button>
+    <button id="btnCompose" class="btn" type="button">Ответить</button>
+  </div>
+  <div id="hint" class="hint">Загружаю переписку…</div>
+  <div id="err" class="err" style="display:none"></div>
+  <div class="frameWrap">
+    <iframe id="inner" class="frame" src="about:blank"></iframe>
+  </div>
+
+  <script src="//api.bitrix24.com/api/v1/"></script>
+  <script>
+    (function () {
+      const btnHistory = document.getElementById('btnHistory');
+      const btnCompose = document.getElementById('btnCompose');
+      const frame = document.getElementById('inner');
+      const hint = document.getElementById('hint');
+      const err = document.getElementById('err');
+
+      const url = new URL(window.location.href);
+      let mode = (url.searchParams.get('mode') || 'history').toLowerCase(); // history|compose
+      let threadId = (url.searchParams.get('thread_id') || '').trim();
+
+      function setActive(newMode) {
+        mode = newMode;
+        btnHistory.classList.toggle('active', mode === 'history');
+        btnCompose.classList.toggle('active', mode === 'compose');
+        loadFrame();
+      }
+
+      function showError(text) {
+        err.style.display = 'block';
+        err.textContent = text;
+      }
+
+      function fit() {
+        try { BX24.fitWindow(); } catch (e) {}
+      }
+
+      function loadFrame() {
+        if (!threadId) return;
+        const uiMode = (mode === 'compose') ? 'reply' : 'view';
+        frame.src = `/email/ui/${encodeURIComponent(threadId)}/?mode=${encodeURIComponent(uiMode)}`;
+        hint.textContent = (mode === 'compose') ? 'Форма ответа' : 'Переписка';
+        setTimeout(fit, 100);
+      }
+
+      btnHistory.addEventListener('click', () => setActive('history'));
+      btnCompose.addEventListener('click', () => setActive('compose'));
+      frame.addEventListener('load', () => setTimeout(fit, 50));
+
+      function resolveThreadByOwnerId(ownerId) {
+        fetch(`/email/api/owner_thread/?ownerId=${encodeURIComponent(ownerId)}`)
+          .then(r => r.json())
+          .then(data => {
+            if (!data || !data.ok) throw new Error((data && data.error) || 'owner_thread_api error');
+            if (!data.thread_id) {
+              hint.textContent = 'Для этого элемента СП нет привязанной переписки.';
+              return;
+            }
+            threadId = data.thread_id;
+            loadFrame();
+            fit();
+          })
+          .catch(e => showError(String(e)));
+      }
+
+      BX24.init(function () {
+        // If we already know thread_id (openRestApp case) - no need to read placement context.
+        if (threadId) {
+          loadFrame();
+          fit();
+          return;
+        }
+
+        BX24.placement.info(function (info) {
+          const options = (info && (info.options || info.placementOptions)) || {};
+          const ownerId = options.ENTITY_ID || options.entityId || options.OWNER_ID || options.ownerId;
+          if (!ownerId) {
+            hint.textContent = '';
+            showError('Не удалось определить entityId/ownerId из placementOptions.');
+            return;
+          }
+          resolveThreadByOwnerId(ownerId);
+        });
+
+        fit();
+      });
+
+      // Normalize mode
+      if (mode !== 'compose') mode = 'history';
+      setActive(mode);
+    })();
+  </script>
+</body>
+</html>
+

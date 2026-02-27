@@ -1,0 +1,98 @@
+﻿<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email thread {{ thread.thread_id }}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: {% if embed %}10px{% else %}24px{% endif %}; }
+    .meta { color: #555; font-size: 14px; }
+    .box { border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin: 12px 0; }
+    .msg { white-space: pre-wrap; }
+    label { display:block; font-size: 14px; margin: 10px 0 6px; }
+    input[type=text], textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
+    textarea { min-height: 140px; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; background: #1f6feb; color: #fff; cursor:pointer; }
+    button:disabled { background: #9bbcf0; }
+    .err { color: #b00020; }
+    .ok { color: #137333; }
+    {% if embed %}
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    h2 { font-size: 16px; margin: 12px 0 8px; }
+    .box { padding: 10px; margin: 10px 0; }
+    {% endif %}
+  </style>
+</head>
+<body>
+  <h1>Email thread</h1>
+  <div class="meta">Thread ID: <code>{{ thread.thread_id }}</code></div>
+  <div class="meta">Сообщений: {{ thread.messages_count }} | Последнее: {{ thread.last_message_date }}</div>
+
+  {% if error %}<p class="err">{{ error }}</p>{% endif %}
+  {% if notice %}<p class="ok">{{ notice }}</p>{% endif %}
+
+  {% if not embed %}
+    {% if mode == "view" %}
+      <div class="meta">Режим: просмотр</div>
+    {% elif mode == "reply" %}
+      <div class="meta">Режим: ответ</div>
+    {% endif %}
+  {% endif %}
+
+  {% if show_messages %}
+  <h2>Переписка</h2>
+  {% for m in messages %}
+    <div class="box">
+      <div class="meta"><b>{{ m.sender }}</b> — {{ m.created_at }}{% if m.subject %} | {{ m.subject }}{% endif %}</div>
+      <div class="msg">{{ m.body_text|default:"" }}</div>
+    </div>
+  {% empty %}
+    <div class="box">Пока нет сообщений.</div>
+  {% endfor %}
+  {% endif %}
+
+  {% if show_form %}
+  <h2 id="reply">Отправить письмо / ответить</h2>
+  {% if not smtp_configured %}
+    <p class="err">SMTP не настроен. Добавь в <code>local_settings.py</code> EMAIL_SMTP_HOST/PORT/USER/PASSWORD.</p>
+  {% endif %}
+
+  <form method="post" enctype="multipart/form-data" action="{% url 'email_thread_send' thread_id=thread.thread_id %}">
+    {% csrf_token %}
+    {% if embed %}<input type="hidden" name="embed" value="1" />{% endif %}
+    {% if mode %}<input type="hidden" name="mode" value="{{ mode }}" />{% endif %}
+
+    <label>Кому (email)</label>
+    <input type="text" name="to_email" value="{{ default_to }}" placeholder="client@example.com" />
+
+    <label>Тема</label>
+    <input type="text" name="subject" value="{{ default_subject }}" />
+
+    <label>Текст</label>
+    <textarea name="body"></textarea>
+
+    <label>Вложения</label>
+    <input type="file" name="files" multiple />
+
+    <div style="margin-top:12px;">
+      <button type="submit" {% if not smtp_configured %}disabled{% endif %}>Отправить</button>
+    </div>
+  </form>
+
+  {% if open_reply %}
+  <script>
+    (function () {
+      var el = document.getElementById('reply');
+      if (el) {
+        el.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+      var ta = document.querySelector('textarea[name="body"]');
+      if (ta) {
+        ta.focus();
+      }
+    })();
+  </script>
+  {% endif %}
+  {% endif %}
+</body>
+</html>

@@ -1,0 +1,6 @@
+local_settings.py
+media
+db.sqlite3
+local_settings
+.idea
+#*/migrations

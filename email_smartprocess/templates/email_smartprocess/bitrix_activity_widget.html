@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Email widget</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 10px; }
+    .tabs { display:flex; gap:8px; margin: 0 0 10px; }
+    .tab { padding: 8px 12px; border: 1px solid #d0d7de; border-radius: 10px; background: #fff; cursor: pointer; }
+    .tab.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+    .hint { color:#555; font-size: 13px; margin: 0 0 10px; }
+    .frame { width:100%; border: 1px solid #d0d7de; border-radius: 10px; height: 520px; }
+    .err { color:#b00020; font-size: 13px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="tabs">
+    <button id="tabView" class="tab active" type="button">Переписка</button>
+    <button id="tabReply" class="tab" type="button">Ответить</button>
+  </div>
+  <div class="hint">Откроется переписка/форма без новой вкладки.</div>
+  <div id="err" class="err" style="display:none"></div>
+  <iframe id="inner" class="frame" src="about:blank"></iframe>
+
+  <script>
+    (function () {
+      const tabView = document.getElementById('tabView');
+      const tabReply = document.getElementById('tabReply');
+      const frame = document.getElementById('inner');
+      const err = document.getElementById('err');
+
+      const params = new URLSearchParams(window.location.search);
+      const threadId = (params.get('thread_id') || '').trim();
+      let mode = (params.get('mode') || 'history').trim().toLowerCase(); // history|compose
+      if (mode !== 'compose') mode = 'history';
+
+      function showError(text) {
+        err.style.display = 'block';
+        err.textContent = text;
+      }
+
+      function loadFrame() {
+        if (!threadId) {
+          showError('Не передан thread_id. Ожидается /email/widget/?thread_id=...');
+          return;
+        }
+        const uiMode = (mode === 'compose') ? 'reply' : 'view';
+        frame.src = `/email/ui/${encodeURIComponent(threadId)}/?mode=${encodeURIComponent(uiMode)}`;
+      }
+
+      function setActiveTab(newMode) {
+        mode = newMode;
+        tabView.classList.toggle('active', mode === 'history');
+        tabReply.classList.toggle('active', mode === 'compose');
+        loadFrame();
+      }
+
+      tabView.addEventListener('click', () => setActiveTab('history'));
+      tabReply.addEventListener('click', () => setActiveTab('compose'));
+
+      setActiveTab(mode);
+    })();
+  </script>
+</body>
+</html>
+
