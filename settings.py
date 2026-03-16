@@ -26,7 +26,6 @@ INSTALLED_APPS = [
     'integration_utils.bitrix24',
     'integration_utils.its_utils.app_settings',
 
-    'is_rapid',
     'email_smartprocess.apps.EmailSmartprocessConfig',
 ]
 

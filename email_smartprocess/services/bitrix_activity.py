@@ -64,7 +64,7 @@ def _rest_app_id() -> str:
 def _open_rest_app_action(*, thread_id: str, mode: str, title: str) -> dict:
     """Open our Bitrix24 REST app in slider and navigate inside app to the needed UI.
 
-    is_rapid.views.index handles PLACEMENT_OPTIONS / actionParams and redirects to /email/ui/<thread_id>/?mode=...
+    root_views.index handles PLACEMENT_OPTIONS / actionParams and redirects to /email/ui/<thread_id>/?mode=...
     """
     return {
         "type": "openRestApp",

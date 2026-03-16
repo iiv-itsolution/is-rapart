@@ -32,6 +32,8 @@ def _extract_action_params(payload):
 
 @main_auth(on_start=True)
 def index(request):
+    params = {}
+
     # openRestApp sends PLACEMENT_OPTIONS in POST (Bitrix side panel).
     if request.method == "POST" and hasattr(request, "POST") and "PLACEMENT_OPTIONS" in request.POST:
         try:
@@ -42,7 +44,9 @@ def index(request):
         if params.get("thread_id") and params.get("mode") in ("view", "reply"):
             if params.get("target") == "email_activity":
                 widget_mode = "compose" if params["mode"] == "reply" else "history"
-                return redirect(f"/email/bitrix/widget/activity/?mode={widget_mode}&thread_id={params['thread_id']}")
+                return redirect(
+                    f"/email/bitrix/widget/activity/?mode={widget_mode}&thread_id={params['thread_id']}"
+                )
             return redirect(f"/email/ui/{params['thread_id']}/?mode={params['mode']}")
 
     # When opened via Bitrix "openRestApp", Bitrix sends actionParams inside PLACEMENT_OPTIONS.
@@ -67,3 +71,4 @@ def index(request):
         return redirect(f"/email/ui/{thread_id}/?mode={mode}")
 
     return HttpResponse("is-rapid: ok")
+
