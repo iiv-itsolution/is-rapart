@@ -6,6 +6,49 @@ from django.utils import timezone
 from integration_utils.bitrix24.models import BitrixUserToken
 
 
+def _one_line(value: str) -> str:
+    return " ".join((value or "").split())
+
+
+def _truncate(value: str, limit: int) -> str:
+    value = value or ""
+    if limit <= 0:
+        return ""
+    if len(value) <= limit:
+        return value
+    return value[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _activity_header_title(thread) -> str:
+    subject = _one_line(getattr(thread, "last_subject", "") or "")
+    return _truncate(subject, 120) if subject else "Email-переписка"
+
+
+def _activity_summary_value(thread) -> str:
+    lines: list[str] = []
+    try:
+        messages = list(getattr(thread, "messages").order_by("-created_at")[:10])
+    except Exception:
+        messages = []
+
+    for msg in messages:
+        sender = _one_line(getattr(msg, "sender", "") or "") or "?"
+        body = _truncate(_one_line(getattr(msg, "body_text", "") or ""), 180)
+
+        created_at = getattr(msg, "created_at", None)
+        try:
+            created_at = timezone.localtime(created_at) if created_at else None
+        except Exception:
+            pass
+        ts = created_at.strftime("%d.%m %H:%M") if created_at else ""
+
+        prefix = f"{ts} — {sender}: " if ts else f"{sender}: "
+        lines.append(prefix + (body or ""))
+
+    preview = "\n".join(lines) if lines else "Сообщений пока нет."
+    return _truncate(preview, 1200)
+
+
 def _get_admin_token():
     return BitrixUserToken.get_admin_token()
 
@@ -89,11 +132,13 @@ def _layout_variants(thread):
     """
 
     icon = {"code": _icon_code()}
+    header_title = _activity_header_title(thread)
+    summary_value = _activity_summary_value(thread)
 
     yield {
         "icon": icon,
         "header": {
-            "title": "Email-переписка",
+            "title": header_title,
         },
         "body": {
             "logo": {"code": _icon_code()},
@@ -101,29 +146,20 @@ def _layout_variants(thread):
                 "summary": {
                     "type": "largeText",
                     "properties": {
-                        "value": (thread.last_subject or "Email thread")[:500],
+                        "value": summary_value,
                     },
                 },
             },
         },
         "footer": {
             "buttons": {
-                "history": {
-                    "title": "Переписка",
-                    "type": "secondary",
-                    "action": _open_rest_app_action(
-                        thread_id=thread.thread_id,
-                        mode="view",
-                        title="Email-переписка",
-                    ),
-                },
                 "reply": {
-                    "title": "Отправить",
+                    "title": "Ответить",
                     "type": "primary",
                     "action": _open_rest_app_action(
                         thread_id=thread.thread_id,
                         mode="reply",
-                        title="Отправить",
+                        title="Ответить",
                     ),
                 },
             }
