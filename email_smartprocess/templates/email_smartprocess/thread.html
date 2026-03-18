@@ -12,6 +12,7 @@
     label { display:block; font-size: 14px; margin: 10px 0 6px; }
     input[type=text], textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; }
     textarea { min-height: 140px; }
+    input[readonly] { background: #f6f8fa; color: #57606a; }
     button { padding: 10px 14px; border: 0; border-radius: 10px; background: #1f6feb; color: #fff; cursor:pointer; }
     button:disabled { background: #9bbcf0; }
     .err { color: #b00020; }
@@ -52,7 +53,7 @@
   {% endif %}
 
   {% if show_form %}
-  <h2 id="reply">Отправить письмо / ответить</h2>
+  <h2 id="reply">{% if mode == "reply" %}Отправить{% else %}Отправить письмо / ответить{% endif %}</h2>
   {% if not smtp_configured %}
     <p class="err">SMTP не настроен. Добавь в <code>local_settings.py</code> EMAIL_SMTP_HOST/PORT/USER/PASSWORD.</p>
   {% endif %}
@@ -63,10 +64,10 @@
     {% if mode %}<input type="hidden" name="mode" value="{{ mode }}" />{% endif %}
 
     <label>Кому (email)</label>
-    <input type="text" name="to_email" value="{{ default_to }}" placeholder="client@example.com" />
+    <input type="text" name="to_email" value="{{ default_to }}" placeholder="client@example.com" {% if mode == "reply" %}readonly{% endif %} />
 
     <label>Тема</label>
-    <input type="text" name="subject" value="{{ default_subject }}" />
+    <input type="text" name="subject" value="{{ default_subject }}" {% if mode == "reply" %}readonly{% endif %} />
 
     <label>Текст</label>
     <textarea name="body"></textarea>

@@ -210,17 +210,23 @@ def thread_send(request, thread_id: str):
     files = request.FILES.getlist("files")
     embed = (request.POST.get("embed") or "").strip() == "1"
     mode = (request.POST.get("mode") or "").strip().lower()
+    preserve_fields = mode != "reply"
+    if not preserve_fields:
+        # In reply mode "To" and "Subject" are fixed to avoid breaking the thread.
+        to_email_raw = ""
+        subject = ""
 
     if not body:
         return render(
             request,
             "email_smartprocess/thread.html",
-            {
-                **_build_thread_context(request, thread, embed=embed),
-                "default_to": to_email_raw,
-                "default_subject": subject,
-                "error": "Пустой текст сообщения",
-            },
+            (
+                {
+                    **_build_thread_context(request, thread, embed=embed),
+                    **({"default_to": to_email_raw, "default_subject": subject} if preserve_fields else {}),
+                    "error": "Пустой текст сообщения",
+                }
+            ),
         )
 
     try:
@@ -269,13 +275,14 @@ def thread_send(request, thread_id: str):
         return render(
             request,
             "email_smartprocess/thread.html",
-            {
-                **_build_thread_context(request, thread, embed=embed),
-                "smtp_configured": False,
-                "default_to": to_email_raw,
-                "default_subject": subject,
-                "error": str(exc),
-            },
+            (
+                {
+                    **_build_thread_context(request, thread, embed=embed),
+                    "smtp_configured": False,
+                    **({"default_to": to_email_raw, "default_subject": subject} if preserve_fields else {}),
+                    "error": str(exc),
+                }
+            ),
         )
     except Exception as exc:
         ilogger = getattr(settings, "ilogger", None)
@@ -284,12 +291,13 @@ def thread_send(request, thread_id: str):
         return render(
             request,
             "email_smartprocess/thread.html",
-            {
-                **_build_thread_context(request, thread, embed=embed),
-                "default_to": to_email_raw,
-                "default_subject": subject,
-                "error": f"Ошибка отправки: {exc}",
-            },
+            (
+                {
+                    **_build_thread_context(request, thread, embed=embed),
+                    **({"default_to": to_email_raw, "default_subject": subject} if preserve_fields else {}),
+                    "error": f"Ошибка отправки: {exc}",
+                }
+            ),
         )
 
     if embed:

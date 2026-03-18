@@ -118,12 +118,12 @@ def _layout_variants(thread):
                     ),
                 },
                 "reply": {
-                    "title": "Отправить письмо",
+                    "title": "Отправить",
                     "type": "primary",
                     "action": _open_rest_app_action(
                         thread_id=thread.thread_id,
                         mode="reply",
-                        title="Отправить письмо",
+                        title="Отправить",
                     ),
                 },
             }
