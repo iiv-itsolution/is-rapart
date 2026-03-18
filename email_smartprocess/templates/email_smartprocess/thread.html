@@ -68,10 +68,10 @@
     <input type="text" name="subject" value="{{ default_subject }}" {% if mode == "reply" %}readonly{% endif %} />
 
     <label>Кому</label>
-    <input type="text" name="to_email" value="{{ default_to }}" placeholder="client@example.com" {% if mode == "reply" %}readonly{% endif %} />
+    <input type="text" name="to_email" value="{{ default_to }}" {% if mode != "reply" %}placeholder="client@example.com"{% endif %} {% if mode == "reply" %}readonly{% endif %} />
 
     <label>Копия</label>
-    <input type="text" name="cc_emails" value="{{ default_cc }}" placeholder="cc1@example.com, cc2@example.com" {% if mode == "reply" %}readonly{% endif %} />
+    <input type="text" name="cc_emails" value="{% if mode == "reply" %}{{ default_cc_reply }}{% else %}{{ default_cc }}{% endif %}" {% if mode != "reply" %}placeholder="cc1@example.com, cc2@example.com"{% endif %} {% if mode == "reply" %}readonly{% endif %} />
 
     <label>Введите сообщение</label>
     {% if reply_greeting %}

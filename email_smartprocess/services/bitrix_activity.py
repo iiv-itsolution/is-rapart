@@ -1,9 +1,29 @@
 from __future__ import annotations
 
+from email.utils import parseaddr
+
 from django.conf import settings
 from django.utils import timezone
 
 from integration_utils.bitrix24.models import BitrixUserToken
+
+
+def _is_automated_sender(value: str) -> bool:
+    _, addr = parseaddr(value or "")
+    addr = (addr or "").strip().lower()
+    if not addr:
+        return False
+    return any(
+        addr.startswith(prefix)
+        for prefix in (
+            "mailer-daemon@",
+            "postmaster@",
+            "no-reply@",
+            "noreply@",
+            "do-not-reply@",
+            "donotreply@",
+        )
+    )
 
 
 def _one_line(value: str) -> str:
@@ -27,11 +47,13 @@ def _activity_header_title(thread) -> str:
 def _activity_summary_value(thread) -> str:
     lines: list[str] = []
     try:
-        messages = list(getattr(thread, "messages").order_by("-created_at")[:10])
+        messages = list(getattr(thread, "messages").order_by("-created_at")[:25])
     except Exception:
         messages = []
 
     for msg in messages:
+        if _is_automated_sender(getattr(msg, "sender", "") or ""):
+            continue
         sender = _one_line(getattr(msg, "sender", "") or "") or "?"
         body = _truncate(_one_line(getattr(msg, "body_text", "") or ""), 180)
 
@@ -44,6 +66,8 @@ def _activity_summary_value(thread) -> str:
 
         prefix = f"{ts} — {sender}: " if ts else f"{sender}: "
         lines.append(prefix + (body or ""))
+        if len(lines) >= 10:
+            break
 
     preview = "\n".join(lines) if lines else "Сообщений пока нет."
     return _truncate(preview, 1200)

@@ -60,10 +60,26 @@ def _guess_reply_to_email(thread: EmailThread) -> str:
     smtp_user = getattr(settings, "EMAIL_SMTP_USER", "") or ""
     smtp_user = smtp_user.strip().lower()
 
+    def is_automated(addr: str) -> bool:
+        addr = (addr or "").strip().lower()
+        if not addr:
+            return False
+        return any(
+            addr.startswith(prefix)
+            for prefix in (
+                "mailer-daemon@",
+                "postmaster@",
+                "no-reply@",
+                "noreply@",
+                "do-not-reply@",
+                "donotreply@",
+            )
+        )
+
     for msg in thread.messages.order_by("-created_at"):
         _, addr = parseaddr(msg.sender or "")
         addr = (addr or "").strip().lower()
-        if addr and addr != smtp_user:
+        if addr and addr != smtp_user and not is_automated(addr):
             return addr
 
     raise ValueError("Cannot determine reply-to email from thread messages")
@@ -103,19 +119,55 @@ def _guess_reply_all_cc(thread: EmailThread, *, to_email: str) -> str:
     smtp_user = (getattr(settings, "EMAIL_SMTP_USER", "") or "").strip().lower()
     to_email_norm = (to_email or "").strip().lower()
 
-    last = thread.messages.order_by("-created_at").first()
-    if not last:
-        return ""
+    def is_automated(addr: str) -> bool:
+        addr = (addr or "").strip().lower()
+        if not addr:
+            return False
+        return any(
+            addr.startswith(prefix)
+            for prefix in (
+                "mailer-daemon@",
+                "postmaster@",
+                "no-reply@",
+                "noreply@",
+                "do-not-reply@",
+                "donotreply@",
+            )
+        )
 
-    candidates = _normalize_email_list(getattr(last, "to_emails", "") or "") + _normalize_email_list(
-        getattr(last, "cc_emails", "") or ""
-    )
+    # Choose the most recent message that has recipient info and includes someone besides
+    # our mailbox and the main reply-to address. This preserves CC even if the latest
+    # incoming message has no CC.
+    candidates: list[str] = []
+    fallback: list[str] = []
+    for msg in thread.messages.order_by("-created_at"):
+        if is_automated(getattr(msg, "sender", "") or ""):
+            continue
+
+        recipients = _normalize_email_list(getattr(msg, "to_emails", "") or "") + _normalize_email_list(
+            getattr(msg, "cc_emails", "") or ""
+        )
+        if not recipients:
+            continue
+
+        if not fallback:
+            fallback = recipients
+
+        has_other = any(
+            (r and (r.lower() not in (smtp_user, to_email_norm)) and not is_automated(r)) for r in recipients
+        )
+        if has_other:
+            candidates = recipients
+            break
+
+    if not candidates:
+        candidates = fallback
 
     out: list[str] = []
     seen: set[str] = set()
     for addr in candidates:
         key = addr.lower()
-        if not key or key == smtp_user or key == to_email_norm:
+        if not key or key == smtp_user or key == to_email_norm or is_automated(key):
             continue
         if key in seen:
             continue
@@ -189,6 +241,12 @@ def _build_thread_context(request, thread: EmailThread, *, embed: bool):
         except Exception:
             default_cc = ""
 
+    default_cc_reply = default_cc
+    if default_to:
+        # In reply mode we show all participants (sender + CC) except our mailbox.
+        # The field is read-only and ignored by backend in reply mode, so it's informational.
+        default_cc_reply = _format_email_list([default_to] + _normalize_email_list(default_cc))
+
     reply_greeting, reply_signature = _reply_greeting_signature()
 
     return {
@@ -197,6 +255,7 @@ def _build_thread_context(request, thread: EmailThread, *, embed: bool):
         "smtp_configured": smtp_configured,
         "default_to": default_to,
         "default_cc": default_cc,
+        "default_cc_reply": default_cc_reply,
         "default_subject": default_subject,
         "reply_greeting": reply_greeting,
         "reply_signature": reply_signature,
