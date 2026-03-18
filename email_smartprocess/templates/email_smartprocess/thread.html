@@ -17,6 +17,7 @@
     button:disabled { background: #9bbcf0; }
     .err { color: #b00020; }
     .ok { color: #137333; }
+    .prefill { white-space: pre-wrap; color: #24292f; padding: 2px 0; }
     {% if embed %}
     h1 { font-size: 18px; margin: 0 0 8px; }
     h2 { font-size: 16px; margin: 12px 0 8px; }
@@ -73,7 +74,13 @@
     <input type="text" name="cc_emails" value="{{ default_cc }}" placeholder="cc1@example.com, cc2@example.com" {% if mode == "reply" %}readonly{% endif %} />
 
     <label>Введите сообщение</label>
-    <textarea name="body">{{ default_body|default:"" }}</textarea>
+    {% if reply_greeting %}
+      <div class="prefill">{{ reply_greeting }}</div>
+    {% endif %}
+    <textarea name="body" placeholder="Напиши текст здесь...">{{ body_value|default:"" }}</textarea>
+    {% if reply_signature %}
+      <div class="prefill" style="margin-top:8px;">{{ reply_signature }}</div>
+    {% endif %}
 
     <label>Вложения</label>
     <input type="file" name="files" multiple />

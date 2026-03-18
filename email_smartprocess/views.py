@@ -126,17 +126,34 @@ def _guess_reply_all_cc(thread: EmailThread, *, to_email: str) -> str:
 
 
 def _default_reply_body() -> str:
-    greeting = (getattr(settings, "EMAIL_REPLY_GREETING", None) or "Добрый день, коллеги,").strip()
-    signature = getattr(settings, "EMAIL_REPLY_SIGNATURE", None) or "С уважением,\nИван\nit-solution"
-    signature = signature.strip()
+    # Backward-compatible alias (kept for older templates / callers).
+    greeting, signature = _reply_greeting_signature()
+    return _compose_email_body(greeting, "", signature)
 
+
+def _reply_greeting_signature() -> tuple[str, str]:
+    greeting = (getattr(settings, "EMAIL_REPLY_GREETING", None) or "Добрый день, коллеги,").strip()
+    signature = getattr(settings, "EMAIL_REPLY_SIGNATURE", None) or "С уважением,\nИван It-Solution"
+    return greeting, signature.strip()
+
+
+def _compose_email_body(greeting: str, body: str, signature: str) -> str:
     parts: list[str] = []
+    greeting = (greeting or "").strip()
+    body = (body or "").strip()
+    signature = (signature or "").strip()
+
     if greeting:
         parts.append(greeting)
-    parts.append("")  # blank line
-    parts.append("")  # room for text
+    if body:
+        if parts:
+            parts.append("")
+        parts.append(body)
     if signature:
+        if parts:
+            parts.append("")
         parts.append(signature)
+
     return "\n".join(parts).rstrip() + "\n"
 
 
@@ -172,6 +189,8 @@ def _build_thread_context(request, thread: EmailThread, *, embed: bool):
         except Exception:
             default_cc = ""
 
+    reply_greeting, reply_signature = _reply_greeting_signature()
+
     return {
         "thread": thread,
         "messages": thread.messages.all(),
@@ -179,7 +198,9 @@ def _build_thread_context(request, thread: EmailThread, *, embed: bool):
         "default_to": default_to,
         "default_cc": default_cc,
         "default_subject": default_subject,
-        "default_body": _default_reply_body(),
+        "reply_greeting": reply_greeting,
+        "reply_signature": reply_signature,
+        "body_value": "",
         "open_reply": open_reply,
         "embed": embed,
         "mode": mode,
@@ -303,7 +324,7 @@ def thread_send(request, thread_id: str):
                         if preserve_fields
                         else {}
                     ),
-                    "default_body": body,
+                    "body_value": body,
                     "error": "Пустой текст сообщения",
                 }
             ),
@@ -327,12 +348,15 @@ def thread_send(request, thread_id: str):
         in_reply_to = _wrap_message_id(thread.thread_id)
         references = in_reply_to
 
+        reply_greeting, reply_signature = _reply_greeting_signature()
+        full_body = _compose_email_body(reply_greeting, body_stripped, reply_signature)
+
         message_id = send_reply_email(
             from_email=smtp_user,
             to_email=to_email,
             cc_emails=cc_emails,
             subject=subject or (f"Re: {thread.last_subject}" if thread.last_subject else "Re:"),
-            body_text=body_stripped,
+            body_text=full_body,
             attachments=files,
             in_reply_to=in_reply_to,
             references=references,
@@ -345,7 +369,7 @@ def thread_send(request, thread_id: str):
             to_emails=_format_email_list([to_email]),
             cc_emails=_format_email_list(cc_emails),
             subject=subject,
-            body_text=body_stripped,
+            body_text=full_body,
             body_html="",
             created_at=timezone.now(),
         )
@@ -372,7 +396,7 @@ def thread_send(request, thread_id: str):
                         if preserve_fields
                         else {}
                     ),
-                    "default_body": body,
+                    "body_value": body,
                     "error": str(exc),
                 }
             ),
@@ -392,7 +416,7 @@ def thread_send(request, thread_id: str):
                         if preserve_fields
                         else {}
                     ),
-                    "default_body": body,
+                    "body_value": body,
                     "error": f"Ошибка отправки: {exc}",
                 }
             ),
