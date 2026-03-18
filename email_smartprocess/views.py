@@ -1,6 +1,6 @@
 ﻿from __future__ import annotations
 
-from email.utils import parseaddr
+from email.utils import getaddresses, parseaddr
 
 from django.conf import settings
 from django.http import Http404, JsonResponse
@@ -77,6 +77,69 @@ def _normalize_email(value: str) -> str:
     return addr
 
 
+def _normalize_email_list(value: str) -> list[str]:
+    emails: list[str] = []
+    for _, addr in getaddresses([value or ""]):
+        addr = (addr or "").strip()
+        if addr and "@" in addr:
+            emails.append(addr)
+
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for addr in emails:
+        key = addr.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(addr)
+    return uniq
+
+
+def _format_email_list(emails: list[str]) -> str:
+    return ", ".join([e for e in emails if e])
+
+
+def _guess_reply_all_cc(thread: EmailThread, *, to_email: str) -> str:
+    smtp_user = (getattr(settings, "EMAIL_SMTP_USER", "") or "").strip().lower()
+    to_email_norm = (to_email or "").strip().lower()
+
+    last = thread.messages.order_by("-created_at").first()
+    if not last:
+        return ""
+
+    candidates = _normalize_email_list(getattr(last, "to_emails", "") or "") + _normalize_email_list(
+        getattr(last, "cc_emails", "") or ""
+    )
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for addr in candidates:
+        key = addr.lower()
+        if not key or key == smtp_user or key == to_email_norm:
+            continue
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(addr)
+
+    return _format_email_list(out)
+
+
+def _default_reply_body() -> str:
+    greeting = (getattr(settings, "EMAIL_REPLY_GREETING", None) or "Добрый день, коллеги,").strip()
+    signature = getattr(settings, "EMAIL_REPLY_SIGNATURE", None) or "С уважением,\nИван\nit-solution"
+    signature = signature.strip()
+
+    parts: list[str] = []
+    if greeting:
+        parts.append(greeting)
+    parts.append("")  # blank line
+    parts.append("")  # room for text
+    if signature:
+        parts.append(signature)
+    return "\n".join(parts).rstrip() + "\n"
+
+
 def _build_thread_context(request, thread: EmailThread, *, embed: bool):
     mode = (request.GET.get("mode") or "").strip().lower()
     open_reply = (request.GET.get("reply") or "").strip().lower() in ("1", "true", "yes", "y")
@@ -102,12 +165,21 @@ def _build_thread_context(request, thread: EmailThread, *, embed: bool):
     except Exception:
         default_to = ""
 
+    default_cc = ""
+    if default_to:
+        try:
+            default_cc = _guess_reply_all_cc(thread, to_email=default_to)
+        except Exception:
+            default_cc = ""
+
     return {
         "thread": thread,
         "messages": thread.messages.all(),
         "smtp_configured": smtp_configured,
         "default_to": default_to,
+        "default_cc": default_cc,
         "default_subject": default_subject,
+        "default_body": _default_reply_body(),
         "open_reply": open_reply,
         "embed": embed,
         "mode": mode,
@@ -205,8 +277,10 @@ def thread_send(request, thread_id: str):
     thread = EmailThread.objects.get(thread_id=thread_id)
 
     to_email_raw = (request.POST.get("to_email") or "").strip()
+    cc_emails_raw = (request.POST.get("cc_emails") or "").strip()
     subject = (request.POST.get("subject") or "").strip()
-    body = (request.POST.get("body") or "").strip()
+    body = (request.POST.get("body") or "")
+    body_stripped = body.strip()
     files = request.FILES.getlist("files")
     embed = (request.POST.get("embed") or "").strip() == "1"
     mode = (request.POST.get("mode") or "").strip().lower()
@@ -214,16 +288,22 @@ def thread_send(request, thread_id: str):
     if not preserve_fields:
         # In reply mode "To" and "Subject" are fixed to avoid breaking the thread.
         to_email_raw = ""
+        cc_emails_raw = ""
         subject = ""
 
-    if not body:
+    if not body_stripped:
         return render(
             request,
             "email_smartprocess/thread.html",
             (
                 {
                     **_build_thread_context(request, thread, embed=embed),
-                    **({"default_to": to_email_raw, "default_subject": subject} if preserve_fields else {}),
+                    **(
+                        {"default_to": to_email_raw, "default_cc": cc_emails_raw, "default_subject": subject}
+                        if preserve_fields
+                        else {}
+                    ),
+                    "default_body": body,
                     "error": "Пустой текст сообщения",
                 }
             ),
@@ -239,14 +319,20 @@ def thread_send(request, thread_id: str):
         else:
             to_email = _guess_reply_to_email(thread)
 
+        if cc_emails_raw:
+            cc_emails = _normalize_email_list(cc_emails_raw)
+        else:
+            cc_emails = _normalize_email_list(_guess_reply_all_cc(thread, to_email=to_email))
+
         in_reply_to = _wrap_message_id(thread.thread_id)
         references = in_reply_to
 
         message_id = send_reply_email(
             from_email=smtp_user,
             to_email=to_email,
+            cc_emails=cc_emails,
             subject=subject or (f"Re: {thread.last_subject}" if thread.last_subject else "Re:"),
-            body_text=body,
+            body_text=body_stripped,
             attachments=files,
             in_reply_to=in_reply_to,
             references=references,
@@ -256,8 +342,10 @@ def thread_send(request, thread_id: str):
             thread=thread,
             message_id=message_id.strip("<>") or f"out:{timezone.now().timestamp()}",
             sender=smtp_user,
+            to_emails=_format_email_list([to_email]),
+            cc_emails=_format_email_list(cc_emails),
             subject=subject,
-            body_text=body,
+            body_text=body_stripped,
             body_html="",
             created_at=timezone.now(),
         )
@@ -279,7 +367,12 @@ def thread_send(request, thread_id: str):
                 {
                     **_build_thread_context(request, thread, embed=embed),
                     "smtp_configured": False,
-                    **({"default_to": to_email_raw, "default_subject": subject} if preserve_fields else {}),
+                    **(
+                        {"default_to": to_email_raw, "default_cc": cc_emails_raw, "default_subject": subject}
+                        if preserve_fields
+                        else {}
+                    ),
+                    "default_body": body,
                     "error": str(exc),
                 }
             ),
@@ -294,7 +387,12 @@ def thread_send(request, thread_id: str):
             (
                 {
                     **_build_thread_context(request, thread, embed=embed),
-                    **({"default_to": to_email_raw, "default_subject": subject} if preserve_fields else {}),
+                    **(
+                        {"default_to": to_email_raw, "default_cc": cc_emails_raw, "default_subject": subject}
+                        if preserve_fields
+                        else {}
+                    ),
+                    "default_body": body,
                     "error": f"Ошибка отправки: {exc}",
                 }
             ),

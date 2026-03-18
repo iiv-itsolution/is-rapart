@@ -44,7 +44,7 @@
   <h2>Переписка</h2>
   {% for m in messages %}
     <div class="box">
-      <div class="meta"><b>{{ m.sender }}</b> — {{ m.created_at }}{% if m.subject %} | {{ m.subject }}{% endif %}</div>
+      <div class="meta"><b>{{ m.sender }}</b> — {{ m.created_at }}{% if m.subject %} | {{ m.subject }}{% endif %}{% if m.to_emails %} | To: {{ m.to_emails|truncatechars:140 }}{% endif %}{% if m.cc_emails %} | Cc: {{ m.cc_emails|truncatechars:140 }}{% endif %}</div>
       <div class="msg">{{ m.body_text|default:"" }}</div>
     </div>
   {% empty %}
@@ -63,14 +63,17 @@
     {% if embed %}<input type="hidden" name="embed" value="1" />{% endif %}
     {% if mode %}<input type="hidden" name="mode" value="{{ mode }}" />{% endif %}
 
-    <label>Кому (email)</label>
-    <input type="text" name="to_email" value="{{ default_to }}" placeholder="client@example.com" {% if mode == "reply" %}readonly{% endif %} />
-
     <label>Тема</label>
     <input type="text" name="subject" value="{{ default_subject }}" {% if mode == "reply" %}readonly{% endif %} />
 
-    <label>Текст</label>
-    <textarea name="body"></textarea>
+    <label>Кому</label>
+    <input type="text" name="to_email" value="{{ default_to }}" placeholder="client@example.com" {% if mode == "reply" %}readonly{% endif %} />
+
+    <label>Копия</label>
+    <input type="text" name="cc_emails" value="{{ default_cc }}" placeholder="cc1@example.com, cc2@example.com" {% if mode == "reply" %}readonly{% endif %} />
+
+    <label>Введите сообщение</label>
+    <textarea name="body">{{ default_body|default:"" }}</textarea>
 
     <label>Вложения</label>
     <input type="file" name="files" multiple />

@@ -25,6 +25,8 @@ class EmailMessage(models.Model):
 
     message_id = models.CharField(max_length=255, unique=True)
     sender = models.CharField(max_length=255, blank=True, default="")
+    to_emails = models.TextField(blank=True, default="")
+    cc_emails = models.TextField(blank=True, default="")
     subject = models.CharField(max_length=255, blank=True, default="")
     body_text = models.TextField(blank=True, default="")
     body_html = models.TextField(blank=True, default="")

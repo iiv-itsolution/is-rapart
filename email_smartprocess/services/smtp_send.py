@@ -34,6 +34,7 @@ def send_reply_email(
     *,
     from_email: str,
     to_email: str,
+    cc_emails: list[str] | None,
     subject: str,
     body_text: str,
     attachments,  # Iterable[UploadedFile]
@@ -45,6 +46,9 @@ def send_reply_email(
     msg = MIMEMultipart("mixed")
     msg["From"] = from_email
     msg["To"] = to_email
+    cc_emails = [e for e in (cc_emails or []) if e]
+    if cc_emails:
+        msg["Cc"] = ", ".join(cc_emails)
     msg["Subject"] = subject
     msg["Date"] = formatdate(localtime=True)
 
@@ -74,7 +78,8 @@ def send_reply_email(
         if use_tls:
             server.starttls()
         server.login(user, password)
-        server.sendmail(from_email, [to_email], msg.as_string())
+        recipients = [to_email] + cc_emails
+        server.sendmail(from_email, recipients, msg.as_string())
     finally:
         try:
             server.quit()
